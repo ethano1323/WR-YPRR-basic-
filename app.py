@@ -6,7 +6,7 @@ import numpy as np
 # Page Setup
 # ------------------------
 st.set_page_config(page_title="NFL WR Matchup Model", layout="wide")
-st.title("NFL WR Coverage Matchup Model (Current Season Only)")
+st.title("NFL WR Coverage + Blitz Matchup Model (Current Season Only)")
 
 # ------------------------
 # Upload Data
@@ -15,6 +15,7 @@ st.sidebar.header("Upload Data Files")
 wr_file = st.sidebar.file_uploader("WR Data CSV", type="csv")
 def_file = st.sidebar.file_uploader("Defense Tendencies CSV", type="csv")
 matchup_file = st.sidebar.file_uploader("Weekly Matchups CSV", type="csv")
+blitz_file = st.sidebar.file_uploader("WR Blitz YPRR CSV", type="csv")
 
 qualified_toggle = st.sidebar.checkbox(
     "Show only qualified players (≥35% league-lead routes)"
@@ -57,6 +58,12 @@ def compute_model(
         twohigh_ratio = row["yprr_2high"] / base
         zerohigh_ratio = row["yprr_0high"] / base
 
+        # ---- Blitz ratio (mandatory, neutral fallback) ----
+        if pd.isna(row["yprr_blitz"]):
+            blitz_ratio = 1.0
+        else:
+            blitz_ratio = row["yprr_blitz"] / base
+
         # ---- Coverage weighting ----
         coverage_component = (
             defense["man_pct"] * man_ratio +
@@ -78,7 +85,16 @@ def compute_model(
         if total_safety > 0:
             safety_component /= total_safety
 
-        expected_ratio = (coverage_component + safety_component) / 2
+        coverage_safety_ratio = (coverage_component + safety_component) / 2
+
+        # ---- Blitz weighting ----
+        blitz_component = (
+            defense["blitz_pct"] * blitz_ratio +
+            (1 - defense["blitz_pct"]) * 1.0
+        )
+
+        # ---- Final adjusted YPRR ----
+        expected_ratio = (coverage_safety_ratio + blitz_component) / 2
         adjusted_yprr = base * expected_ratio
 
         # ---- Edge calculation ----
@@ -124,11 +140,31 @@ def compute_model(
 # ------------------------
 # Run App
 # ------------------------
-if wr_file and def_file and matchup_file:
+if wr_file and def_file and matchup_file and blitz_file:
 
     wr_df = pd.read_csv(wr_file)
     def_df_raw = pd.read_csv(def_file)
     matchup_df = pd.read_csv(matchup_file)
+    blitz_df = pd.read_csv(blitz_file)
+
+    # ---- Normalize names for blitz merge ----
+    def normalize_name(name):
+        return (
+            str(name).lower()
+            .replace(".", "")
+            .replace(" jr", "")
+            .replace(" iii", "")
+            .strip()
+        )
+
+    wr_df["player_norm"] = wr_df["player"].apply(normalize_name)
+    blitz_df["player_norm"] = blitz_df["player"].apply(normalize_name)
+
+    wr_df = wr_df.merge(
+        blitz_df[["player_norm", "yprr_blitz"]],
+        on="player_norm",
+        how="left"
+    )
 
     # Detect defense index column
     for col in ["team", "defense", "def_team", "abbr"]:
@@ -140,7 +176,11 @@ if wr_file and def_file and matchup_file:
         st.stop()
 
     # Convert percentages
-    for col in ["man_pct", "zone_pct", "onehigh_pct", "twohigh_pct", "zerohigh_pct"]:
+    for col in [
+        "man_pct", "zone_pct",
+        "onehigh_pct", "twohigh_pct", "zerohigh_pct",
+        "blitz_pct"
+    ]:
         def_df[col] = def_df[col] / 100.0
 
     # Merge matchups
@@ -152,7 +192,6 @@ if wr_file and def_file and matchup_file:
         st.warning("No players available after filtering.")
         st.stop()
 
-    # ---- Column order ----
     display_cols = [
         "rank",
         "player",
@@ -165,7 +204,7 @@ if wr_file and def_file and matchup_file:
     ]
 
     st.subheader("WR Matchup Rankings")
-    st.dataframe(results[display_cols].reset_index(drop=True))
+    st.dataframe(results[display_cols].reset_index(drop=True), hide_index=True)
 
     # ---- Targets & Fades ----
     min_edge = 15
@@ -186,11 +225,11 @@ if wr_file and def_file and matchup_file:
         "Targets must have:\n"
         "• Edge ≥ +15\n"
         "• ≥ 50% of league-lead routes\n"
-        "• Adjusted YPRR is matchup-based and not penalized"
+        "• Adjusted YPRR reflects coverage + safety + blitz"
     )
 
     if not targets.empty:
-        st.dataframe(targets[display_cols].reset_index(drop=True))
+        st.dataframe(targets[display_cols].reset_index(drop=True), hide_index=True)
     else:
         st.write("No players meet the target criteria this week.")
 
@@ -199,15 +238,16 @@ if wr_file and def_file and matchup_file:
         "Fades must have:\n"
         "• Edge ≤ -15\n"
         "• ≥ 50% of league-lead routes\n"
-        "• Adjusted YPRR reflects poor coverage fit"
+        "• Blitz exposure contributes to downside"
     )
 
     if not fades.empty:
-        st.dataframe(fades[display_cols].reset_index(drop=True))
+        st.dataframe(fades[display_cols].reset_index(drop=True), hide_index=True)
     else:
         st.write("No players meet the fade criteria this week.")
 
 else:
-    st.info("Upload WR, Defense, and Matchup CSV files to begin.")
+    st.info("Upload WR, Defense, Matchup, and Blitz CSV files to begin.")
+
 
 
