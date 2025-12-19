@@ -120,10 +120,10 @@ def compute_model(
             "Player": row["player"],
             "Team": row["team"],
             "Opponent": opponent,
-            "Route Share": round(route_share, 3),
-            "Base YPRR": round(base, 2),
-            "Adjusted YPRR": round(adjusted_yprr, 2),
-            "Edge": round(edge_score, 1)
+            "Route Share": route_share,
+            "Base YPRR": base,
+            "Adjusted YPRR": adjusted_yprr,
+            "Edge": edge_score
         })
 
     df = pd.DataFrame(results)
@@ -220,8 +220,16 @@ if wr_file and def_file and matchup_file and blitz_file:
         "Edge"
     ]
 
+    # ---- Formatting ----
+    number_format = {
+        "Edge": "{:.1f}",
+        "Route Share": "{:.1f}",
+        "Base YPRR": "{:.2f}",
+        "Adjusted YPRR": "{:.2f}"
+    }
+
     st.subheader("WR Matchup Rankings")
-    st.dataframe(results[display_cols].style.applymap(color_edge, subset=["Edge"]))
+    st.dataframe(results[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
 
     # ---- Targets & Fades ----
     min_edge = 7.5
@@ -245,7 +253,7 @@ if wr_file and def_file and matchup_file and blitz_file:
         f"• Adjusted YPRR reflects coverage + safety + blitz"
     )
     if not targets.empty:
-        st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]))
+        st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
     else:
         st.write("No players meet the target criteria this week.")
 
@@ -257,7 +265,7 @@ if wr_file and def_file and matchup_file and blitz_file:
         f"• Blitz exposure contributes to downside"
     )
     if not fades.empty:
-        st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]))
+        st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
     else:
         st.write("No players meet the fade criteria this week.")
 
