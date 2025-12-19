@@ -79,7 +79,7 @@ def compute_model(
         onehigh_ratio = row["yprr_1high"] / base
         twohigh_ratio = row["yprr_2high"] / base
         zerohigh_ratio = row["yprr_0high"] / base
-        blitz_ratio = row["yprr_blitz"] / base  # already filled with base_yprr if missing
+        blitz_ratio = row["yprr_blitz"] / base  # Already filled with base_yprr if missing
 
         # ---- Coverage weighting ----
         coverage_component = (
@@ -151,14 +151,26 @@ def compute_model(
     return df
 
 # ------------------------
-# Run App
+# Load CSVs
 # ------------------------
 wr_df = load_csv(wr_file, DEFAULT_WR_PATH, "WR Data")
 def_df_raw = load_csv(def_file, DEFAULT_DEF_PATH, "Defense Data")
 matchup_df = load_csv(matchup_file, DEFAULT_MATCHUP_PATH, "Matchup Data")
 blitz_df = load_csv(blitz_file, DEFAULT_BLITZ_PATH, "Blitz Data")
 
-# Detect defense index column
+# ---- Validate required columns ----
+required_wr_cols = ["player", "team", "routes_played", "base_yprr",
+                    "yprr_man","yprr_zone","yprr_1high","yprr_2high","yprr_0high"]
+missing_wr = [c for c in required_wr_cols if c not in wr_df.columns]
+if missing_wr:
+    st.error(f"WR CSV is missing required columns: {missing_wr}")
+    st.stop()
+
+if "player" not in blitz_df.columns or "yprr_blitz" not in blitz_df.columns:
+    st.error("Blitz CSV must contain 'player' and 'yprr_blitz' columns.")
+    st.stop()
+
+# ---- Defense index column ----
 for col in ["team", "defense", "def_team", "abbr"]:
     if col in def_df_raw.columns:
         def_df = def_df_raw.set_index(col)
@@ -167,39 +179,30 @@ else:
     st.error("Defense CSV must include a team column.")
     st.stop()
 
-# Convert percentages
+# ---- Convert percentages ----
 for col in ["man_pct", "zone_pct", "onehigh_pct", "twohigh_pct", "zerohigh_pct", "blitz_pct"]:
     if col in def_df.columns:
         def_df[col] = def_df[col] / 100.0
     else:
-        def_df[col] = 0.0  # fill missing columns with 0
+        def_df[col] = 0.0
 
-# Merge matchups
+# ---- Merge Matchups ----
 wr_df = wr_df.merge(matchup_df, on="team", how="left")
 wr_df = wr_df.merge(blitz_df, on="player", how="left")
+wr_df["yprr_blitz"] = wr_df["yprr_blitz"].fillna(wr_df["base_yprr"])
 
-# Fill missing blitz with base_yprr
-if "yprr_blitz" in wr_df.columns:
-    wr_df["yprr_blitz"] = wr_df["yprr_blitz"].fillna(wr_df["base_yprr"])
-else:
-    wr_df["yprr_blitz"] = wr_df["base_yprr"]
-
+# ------------------------
+# Compute Results
+# ------------------------
 results = compute_model(wr_df, def_df)
-
 if results.empty:
     st.warning("No players available after filtering.")
     st.stop()
 
 # ---- Column order ----
 display_cols = [
-    "rank",
-    "player",
-    "team",
-    "opponent",
-    "route_share",
-    "base_yprr",
-    "adjusted_yprr",
-    "edge"
+    "rank", "player", "team", "opponent",
+    "route_share", "base_yprr", "adjusted_yprr", "edge"
 ]
 
 st.subheader("WR Matchup Rankings")
@@ -210,35 +213,26 @@ st.dataframe(results[display_cols])
 min_edge = 7.5
 min_routes = 0.40
 
-targets = results[
-    (results["edge"] >= min_edge) &
-    (results["route_share"] >= min_routes)
-]
-
-fades = results[
-    (results["edge"] <= -min_edge) &
-    (results["route_share"] >= min_routes)
-].sort_values("rank", ascending=True)
+targets = results[(results["edge"] >= min_edge) & (results["route_share"] >= min_routes)]
+fades = results[(results["edge"] <= -min_edge) & (results["route_share"] >= min_routes)].sort_values("rank", ascending=True)
 
 st.subheader("Targets (Best Matchups)")
-st.info(
-    "Targets: Edge ≥ +7.5 and ≥ 40% of league-lead routes"
-)
+st.info("Targets: Edge ≥ +7.5 and ≥ 40% of league-lead routes")
 if not targets.empty:
     st.dataframe(targets[display_cols])
 else:
     st.write("No players meet the target criteria this week.")
 
 st.subheader("Fades (Worst Matchups)")
-st.info(
-    "Fades: Edge ≤ -7.5 and ≥ 40% of league-lead routes"
-)
+st.info("Fades: Edge ≤ -7.5 and ≥ 40% of league-lead routes")
 if not fades.empty:
     st.dataframe(fades[display_cols])
 else:
     st.write("No players meet the fade criteria this week.")
 
-# ---- Info Section ----
+# ------------------------
+# Stats Description
+# ------------------------
 st.subheader("Stats Description")
 st.markdown("""
 - **Base YPRR**: Player's Yards per Route Run.
