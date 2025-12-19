@@ -204,11 +204,11 @@ if wr_file and def_file and matchup_file and blitz_file:
     ]
 
     st.subheader("WR Matchup Rankings")
-    st.dataframe(results[display_cols].reset_index(drop=True), hide_index=True)
+    st.dataframe(results[display_cols].reset_index(drop=True))
 
     # ---- Targets & Fades ----
-    min_edge = 15
-    min_routes = 0.50
+    min_edge = 7.5
+    min_routes = 0.40
 
     targets = results[
         (results["edge"] >= min_edge) &
@@ -222,25 +222,25 @@ if wr_file and def_file and matchup_file and blitz_file:
 
     st.subheader("Targets (Best Matchups)")
     st.info(
-        "Targets must have:\n"
-        "• Edge ≥ +15\n"
-        "• ≥ 50% of league-lead routes\n"
-        "• Adjusted YPRR reflects coverage + safety + blitz"
+        f"Targets must have:\n"
+        f"• Edge ≥ +{min_edge}\n"
+        f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
+        f"• Adjusted YPRR reflects coverage + safety + blitz"
     )
     if not targets.empty:
-        st.dataframe(targets[display_cols].reset_index(drop=True), hide_index=True)
+        st.dataframe(targets[display_cols].reset_index(drop=True))
     else:
         st.write("No players meet the target criteria this week.")
 
     st.subheader("Fades (Worst Matchups)")
     st.info(
-        "Fades must have:\n"
-        "• Edge ≤ -15\n"
-        "• ≥ 50% of league-lead routes\n"
-        "• Blitz exposure contributes to downside"
+        f"Fades must have:\n"
+        f"• Edge ≤ -{min_edge}\n"
+        f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
+        f"• Blitz exposure contributes to downside"
     )
     if not fades.empty:
-        st.dataframe(fades[display_cols].reset_index(drop=True), hide_index=True)
+        st.dataframe(fades[display_cols].reset_index(drop=True))
     else:
         st.write("No players meet the fade criteria this week.")
 
