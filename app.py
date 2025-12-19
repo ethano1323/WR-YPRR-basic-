@@ -218,7 +218,7 @@ if wr_file and def_file and matchup_file and blitz_file:
     fades = results[
         (results["Edge"] <= -min_edge) &
         (results["Route Share"] >= min_routes)
-    ]
+    ].sort_values("Edge")  # <-- Sorted ascending for worst fade first
 
     st.subheader("Targets (Best Matchups)")
     st.info(
@@ -246,6 +246,5 @@ if wr_file and def_file and matchup_file and blitz_file:
 
 else:
     st.info("Upload WR, Defense, Matchup, and Blitz CSV files to begin.")
-
 
 
