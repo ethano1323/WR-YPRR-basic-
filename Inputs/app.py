@@ -126,8 +126,8 @@ def compute_model(
         edge_score *= (1 - penalty)
 
         results.append({
-            "player": row["player"],
-            "team": row["team"],
+            "player": row.get("player", "Unknown"),
+            "team": row.get("team", "Unknown"),
             "opponent": opponent,
             "route_share": round(route_share, 1),
             "base_yprr": round(base, 2),
@@ -247,3 +247,4 @@ st.markdown("""
 - **Edge**: Percentage difference between adjusted YPRR and base YPRR, scaled to show positive and negative matchups.
 - **Route Share**: Player's routes run relative to the league leader.
 """)
+
