@@ -142,12 +142,17 @@ if wr_file and def_file and matchup_file:
     st.subheader("WR Matchup Rankings")
     st.dataframe(results)
 
+    # ---- Targets (Best Matchups) ----
+    targets = results[(results["route_share"] >= 0.25)].sort_values("edge", ascending=False).head(10)
     st.subheader("Targets (Best Matchups)")
-    st.dataframe(results.sort_values("edge", ascending=False).head(10))
+    st.dataframe(targets)
 
+    # ---- Fades (Worst Matchups) ----
+    fades = results[(results["route_share"] >= 0.25)].sort_values("edge").head(10)
     st.subheader("Fades (Worst Matchups)")
-    st.dataframe(results.sort_values("edge").head(10))
+    st.dataframe(fades)
 
 else:
     st.info("Upload WR, Defense, and Matchup CSV files to begin.")
+
 
