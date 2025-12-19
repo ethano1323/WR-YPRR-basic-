@@ -5,8 +5,8 @@ import numpy as np
 # ------------------------
 # Page Setup
 # ------------------------
-st.set_page_config(page_title="NFL WR Matchup Model", layout="wide")
-st.title("NFL WR Coverage + Blitz Matchup Model (Current Season Only)")
+st.set_page_config(page_title="NFL Receiver Model", layout="wide")
+st.title("Receiver Weekly Matchup Model")
 
 # ------------------------
 # Default Data Paths
@@ -27,7 +27,7 @@ matchup_file = st.sidebar.file_uploader("Weekly Matchups CSV", type="csv")
 blitz_file = st.sidebar.file_uploader("WR Blitz YPRR CSV", type="csv")
 
 qualified_toggle = st.sidebar.checkbox(
-    "Show only qualified players (≥35% league-lead routes)"
+    "Show only qualified players (35+% route share)"
 )
 
 # ------------------------
@@ -223,7 +223,7 @@ if results.empty:
     st.stop()
 
 display_cols = [
-    "Rank", "Player", "Team", "Opponent", "Route Share", "Base YPRR", "Adjusted YPRR", "Edge"
+    "Rank", "Player", "Team", "Opponent", "Route Share", "Base YPRR", "Adjusted YPRR", "Edge Score"
 ]
 
 number_format = {
@@ -234,7 +234,7 @@ number_format = {
 }
 
 # Rankings table
-st.subheader("WR Matchup Rankings")
+st.subheader("Player Rankings")
 st.markdown(
     "Players are sorted by the absolute value of Edge, so the largest positive or negative matchups appear at the top."
 )
@@ -253,24 +253,22 @@ fades = results[
     (results["Route Share"] >= min_routes)
 ].sort_values("Edge")  # ascending for worst fade first
 
-st.subheader("Targets (Best Matchups)")
+st.subheader("Targets")
 st.info(
     f"Targets must have:\n"
     f"• Edge ≥ +{min_edge}\n"
     f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
-    f"• Adjusted YPRR reflects coverage + safety + blitz"
 )
 if not targets.empty:
     st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
 else:
     st.write("No players meet the target criteria this week.")
 
-st.subheader("Fades (Worst Matchups)")
+st.subheader("Fades")
 st.info(
     f"Fades must have:\n"
     f"• Edge ≤ -{min_edge}\n"
     f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
-    f"• Blitz exposure contributes to downside"
 )
 if not fades.empty:
     st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
@@ -280,14 +278,12 @@ else:
 # Stat definitions
 st.subheader("Stat Definitions")
 st.markdown(
-    """
-    **Player:** Wide receiver's name  
-    **Team:** WR's team  
-    **Opponent:** Opponent team for the week  
-    **Route Share:** % of league-leader routes played by this WR  
-    **Base YPRR:** Player's base YPRR this season  
-    **Adjusted YPRR:** Projected YPRR based on opponent coverage, safety looks, and blitz  
-    **Edge:** Percentage difference between Adjusted YPRR and Base YPRR (after route-share penalty for edge)  
+    """    
+    **Opponent:** Matchup for the week  
+    **Route Share:** Percentage of the team's total dropbacks that this player ran a route on 
+    **Base YPRR:** Player's base yards per route run this season  
+    **Adjusted YPRR:** Projected YPRR based on opponent's typical coverage, safety looks, and blitz rates
+    **Edge:** Percentage difference between Adjusted YPRR and Base YPRR, including a sample size penalty (accounts for limited route-share and other factors)  
     """
 )
 
