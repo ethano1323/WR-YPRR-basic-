@@ -142,15 +142,28 @@ if wr_file and def_file and matchup_file:
     st.subheader("WR Matchup Rankings")
     st.dataframe(results)
 
-    # ---- Targets (Best Matchups) ----
-    targets = results[(results["route_share"] >= 0.25)].sort_values("edge", ascending=False).head(10)
-    st.subheader("Targets (Best Matchups)")
-    st.dataframe(targets)
+    # ---- Targets/Fades Filters ----
+    min_edge = 15  # +15 for targets, -15 for fades
+    min_route_share = 0.50  # ≥50% routes for meaningful Targets/Fades
 
-    # ---- Fades (Worst Matchups) ----
-    fades = results[(results["route_share"] >= 0.25)].sort_values("edge").head(10)
+    targets = results[(results["edge"] >= min_edge) & (results["route_share"] >= min_route_share)].sort_values("edge", ascending=False)
+    fades = results[(results["edge"] <= -min_edge) & (results["route_share"] >= min_route_share)].sort_values("edge")
+
+    # ---- Targets Section ----
+    st.subheader("Targets (Best Matchups)")
+    if not targets.empty:
+        st.info(f"Showing players with edge ≥ +{min_edge} and route share ≥ {int(min_route_share*100)}% of league lead")
+        st.dataframe(targets)
+    else:
+        st.info(f"No players meet the criteria (edge ≥ +{min_edge} and route share ≥ {int(min_route_share*100)}%)")
+
+    # ---- Fades Section ----
     st.subheader("Fades (Worst Matchups)")
-    st.dataframe(fades)
+    if not fades.empty:
+        st.info(f"Showing players with edge ≤ -{min_edge} and route share ≥ {int(min_route_share*100)}% of league lead")
+        st.dataframe(fades)
+    else:
+        st.info(f"No players meet the criteria (edge ≤ -{min_edge} and route share ≥ {int(min_route_share*100)}%)")
 
 else:
     st.info("Upload WR, Defense, and Matchup CSV files to begin.")
