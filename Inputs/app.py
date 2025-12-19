@@ -282,9 +282,11 @@ st.subheader("Stat Definitions")
 st.markdown(
     """    
     **Opponent:** Matchup for the week  
+    
     **Route Share:** Percentage of the team's total dropbacks in which this player ran a route
     
-    **Base YPRR:** Player's base yards per route run this season  
+    **Base YPRR:** Player's base yards per route run this season 
+    
     **Adjusted YPRR:** Projected YPRR based on opponent's typical coverage, safety looks, and blitz rates
     
     **Edge:** Percentage difference between Adjusted YPRR and Base YPRR, including a sample size penalty (accounts for limited route-share and other factors)  
