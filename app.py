@@ -50,10 +50,23 @@ def compute_model(wr_df, def_df, max_penalty=0.8, exponent=2, start_penalty=0.50
         zone_ratio = row["yprr_zone"] / base
         onehigh_ratio = row["yprr_1high"] / base
         twohigh_ratio = row["yprr_2high"] / base
+        zerohigh_ratio = row["yprr_0high"] / base
 
         # ---- Weighted matchup components ----
         coverage_component = defense["man_pct"] * man_ratio + defense["zone_pct"] * zone_ratio
-        safety_component = defense["onehigh_pct"] * onehigh_ratio + defense["twohigh_pct"] * twohigh_ratio
+
+        # Include 0-high safety in safety_component
+        safety_component = (
+            defense["onehigh_pct"] * onehigh_ratio +
+            defense["twohigh_pct"] * twohigh_ratio +
+            defense["zerohigh_pct"] * zerohigh_ratio
+        )
+        # Normalize by total safety percentage to ensure proper weighting
+        total_safety_pct = defense["onehigh_pct"] + defense["twohigh_pct"] + defense["zerohigh_pct"]
+        if total_safety_pct > 0:
+            safety_component = safety_component / total_safety_pct
+        else:
+            safety_component = 0
 
         # ---- Expected ratio (average of coverage + safety) ----
         expected_ratio = (coverage_component + safety_component) / 2
@@ -117,7 +130,7 @@ if wr_file and def_file and matchup_file:
         st.stop()
 
     # ---- Convert percentages to decimals automatically ----
-    for pct_col in ["man_pct", "zone_pct", "onehigh_pct", "twohigh_pct"]:
+    for pct_col in ["man_pct", "zone_pct", "onehigh_pct", "twohigh_pct", "zerohigh_pct"]:
         if pct_col in def_df.columns:
             def_df[pct_col] = def_df[pct_col] / 100.0
         else:
