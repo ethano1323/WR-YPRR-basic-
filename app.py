@@ -221,7 +221,6 @@ if wr_file and def_file and matchup_file and blitz_file:
         "Edge"
     ]
 
-    # ---- Formatting ----
     number_format = {
         "Edge": "{:.1f}",
         "Route Share": "{:.1f}",
@@ -230,6 +229,9 @@ if wr_file and def_file and matchup_file and blitz_file:
     }
 
     st.subheader("WR Matchup Rankings")
+    st.markdown(
+        "Players are sorted by the absolute value of Edge, so the largest positive or negative matchups appear at the top."
+    )
     st.dataframe(results[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
 
     # ---- Targets & Fades ----
@@ -244,7 +246,7 @@ if wr_file and def_file and matchup_file and blitz_file:
     fades = results[
         (results["Edge"] <= -min_edge) &
         (results["Route Share"] >= min_routes)
-    ].sort_values("Edge")  # Sorted ascending for worst fade first
+    ].sort_values("Edge")  # ascending for worst fade first
 
     st.subheader("Targets (Best Matchups)")
     st.info(
@@ -269,6 +271,20 @@ if wr_file and def_file and matchup_file and blitz_file:
         st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
     else:
         st.write("No players meet the fade criteria this week.")
+
+    # ---- Stat explanations ----
+    st.subheader("Stat Definitions")
+    st.markdown(
+        """
+        **Player:** Wide receiver's name  
+        **Team:** WR's team  
+        **Opponent:** Opponent team for the week  
+        **Route Share:** % of league-leader routes played by this WR  
+        **Base YPRR:** Player's base YPRR this season  
+        **Adjusted YPRR:** Projected YPRR based on opponent coverage, safety looks, and blitz  
+        **Edge:** Percentage difference between Adjusted YPRR and Base YPRR (after route-share penalty for edge)  
+        """
+    )
 
 else:
     st.info("Upload WR, Defense, Matchup, and Blitz CSV files to begin.")
