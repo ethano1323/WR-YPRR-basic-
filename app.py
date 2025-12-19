@@ -22,7 +22,7 @@ qualified_toggle = st.sidebar.checkbox("Show only qualified players (≥35% leag
 # ------------------------
 # Core Model
 # ------------------------
-def compute_model(wr_df, def_df, max_penalty=0.8):
+def compute_model(wr_df, def_df, max_penalty=0.8, exponent=2, start_penalty=0.50, end_penalty=0.05):
 
     league_lead_routes = wr_df["routes_played"].max()
     results = []
@@ -66,13 +66,13 @@ def compute_model(wr_df, def_df, max_penalty=0.8):
         raw_edge = np.clip(raw_edge, -0.25, 0.25)
         edge_score = (raw_edge / 0.25) * 100
 
-        # ---- Route share / sample size penalty applied only to edge ----
-        if route_share >= 0.85:
+        # ---- Exponential route share penalty applied only to edge ----
+        if route_share >= start_penalty:
             penalty_factor = 0
-        elif route_share <= 0.15:
+        elif route_share <= end_penalty:
             penalty_factor = max_penalty
         else:
-            penalty_factor = max_penalty * (0.85 - route_share) / (0.85 - 0.15)
+            penalty_factor = max_penalty * ((start_penalty - route_share) / (start_penalty - end_penalty))**exponent
 
         edge_score *= (1 - penalty_factor)
 
