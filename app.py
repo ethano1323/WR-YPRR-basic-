@@ -12,7 +12,6 @@ st.title("NFL WR Coverage Matchup Model (Current Season Only)")
 # Upload Data
 # ------------------------
 st.sidebar.header("Upload Data Files")
-
 wr_file = st.sidebar.file_uploader("WR Data CSV", type="csv")
 def_file = st.sidebar.file_uploader("Defense Tendencies CSV", type="csv")
 matchup_file = st.sidebar.file_uploader("Weekly Matchups CSV", type="csv")
@@ -29,7 +28,7 @@ def compute_model(wr_df, def_df):
         base = row["base_yprr"]
 
         # ---- Filters ----
-        if base < 0.2 or row["routes_played"] <= 0:
+        if base < 0.4 or row["routes_played"] <= 0:
             continue
 
         opp = row["opponent"]
@@ -104,8 +103,23 @@ if wr_file and def_file and matchup_file:
         st.error("Defense CSV must contain a team column.")
         st.stop()
 
+    # ---- Convert percentages to decimals automatically ----
+    for pct_col in ["man_pct", "zone_pct", "onehigh_pct", "twohigh_pct"]:
+        if pct_col in def_df.columns:
+            def_df[pct_col] = def_df[pct_col] / 100.0
+        else:
+            st.error(f"Defense CSV missing required column: {pct_col}")
+            st.stop()
+
     # ---- Merge weekly matchups ----
     wr_df = wr_df.merge(matchup_df, on="team", how="left")
+
+    # ---- Debug missing defenses ----
+    missing_defs = set(wr_df["opponent"].dropna()) - set(def_df.index)
+    if missing_defs:
+        st.warning(
+            f"Missing defense data for: {', '.join(sorted(missing_defs))}"
+        )
 
     # ---- Run model ----
     results = compute_model(wr_df, def_df)
@@ -125,3 +139,4 @@ if wr_file and def_file and matchup_file:
 
 else:
     st.info("Upload WR, Defense, and Matchup CSV files to begin.")
+
