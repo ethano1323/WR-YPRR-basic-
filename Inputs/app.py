@@ -5,8 +5,8 @@ import numpy as np
 # ------------------------
 # Page Setup
 # ------------------------
-st.set_page_config(page_title="NFL Receiver Model", layout="wide")
-st.title("Receiver Weekly Matchup Model")
+st.set_page_config(page_title="NFL WR Matchup Model", layout="wide")
+st.title("NFL WR Coverage + Blitz Matchup Model (Current Season Only)")
 
 # ------------------------
 # Default Data Paths
@@ -27,7 +27,7 @@ matchup_file = st.sidebar.file_uploader("Weekly Matchups CSV", type="csv")
 blitz_file = st.sidebar.file_uploader("WR Blitz YPRR CSV", type="csv")
 
 qualified_toggle = st.sidebar.checkbox(
-    "Show only qualified players (35+% route share)"
+    "Show only qualified players (≥35% league-lead routes)"
 )
 
 # ------------------------
@@ -223,7 +223,7 @@ if results.empty:
     st.stop()
 
 display_cols = [
-    "Rank", "Player", "Team", "Opponent", "Route Share", "Base YPRR", "Adjusted YPRR", "Edge Score"
+    "Rank", "Player", "Team", "Opponent", "Route Share", "Base YPRR", "Adjusted YPRR", "Edge"
 ]
 
 number_format = {
@@ -234,7 +234,7 @@ number_format = {
 }
 
 # Rankings table
-st.subheader("Player Rankings")
+st.subheader("WR Matchup Rankings")
 st.markdown(
     "Players are sorted by the absolute value of Edge, so the largest positive or negative matchups appear at the top."
 )
@@ -253,22 +253,24 @@ fades = results[
     (results["Route Share"] >= min_routes)
 ].sort_values("Edge")  # ascending for worst fade first
 
-st.subheader("Targets")
+st.subheader("Targets (Best Matchups)")
 st.info(
     f"Targets must have:\n"
     f"• Edge ≥ +{min_edge}\n"
     f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
+    f"• Adjusted YPRR reflects coverage + safety + blitz"
 )
 if not targets.empty:
     st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
 else:
     st.write("No players meet the target criteria this week.")
 
-st.subheader("Fades")
+st.subheader("Fades (Worst Matchups)")
 st.info(
     f"Fades must have:\n"
     f"• Edge ≤ -{min_edge}\n"
     f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
+    f"• Blitz exposure contributes to downside"
 )
 if not fades.empty:
     st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
