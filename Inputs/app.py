@@ -26,8 +26,14 @@ def_file = st.sidebar.file_uploader("Defense Tendencies CSV", type="csv")
 matchup_file = st.sidebar.file_uploader("Weekly Matchups CSV", type="csv")
 blitz_file = st.sidebar.file_uploader("WR Blitz YPRR CSV", type="csv")
 
-qualified_toggle = st.sidebar.checkbox(
-    "Show only qualified players (≥35% league-lead routes)"
+# ------------------------
+# Route-share filter toggles
+# ------------------------
+qualified_toggle_35 = st.sidebar.checkbox(
+    "Show only players ≥35% route share"
+)
+qualified_toggle_20 = st.sidebar.checkbox(
+    "Show only players ≥20% route share"
 )
 
 # ------------------------
@@ -89,10 +95,10 @@ wr_df = wr_df.merge(matchup_df, on="team", how="left")
 def compute_model(
     wr_df,
     def_df,
-    max_penalty=0.6,  # updated max penalty
+    max_penalty=0.6,    # regression toward 0
     exponent=2,
-    start_penalty=30,  # updated threshold (%)
-    end_penalty=5      # updated threshold (%)
+    start_penalty=30,   # percentage
+    end_penalty=5       # percentage
 ):
     results = []
 
@@ -114,7 +120,7 @@ def compute_model(
         blitz_ratio = row.get("yprr_blitz", np.nan)
         if pd.isna(blitz_ratio):
             blitz_ratio = base
-        blitz_ratio /= base  # Normalize
+        blitz_ratio /= base  # normalize
 
         # Coverage & safety ratios
         man_ratio = row["yprr_man"] / base
@@ -158,7 +164,7 @@ def compute_model(
         # Route-share regression toward 0
         route_share = row.get("route_share", np.nan)
         if pd.isna(route_share):
-            route_share = 0  # treat missing as 0
+            route_share = 0
 
         if route_share >= start_penalty:
             penalty = 0
@@ -174,7 +180,7 @@ def compute_model(
             "Player": row["player"],
             "Team": row["team"],
             "Opponent": opponent,
-            "Route Share": route_share,  # 0–100
+            "Route Share": route_share,  # 0–100%
             "Base YPRR": round(base, 2),
             "Adjusted YPRR": round(adjusted_yprr, 2),
             "Edge": round(edge_score, 1)
@@ -184,8 +190,11 @@ def compute_model(
     if df.empty:
         return df
 
-    if qualified_toggle:
+    # Apply route-share filters based on sidebar toggles
+    if qualified_toggle_35:
         df = df[df["Route Share"] >= 35]
+    elif qualified_toggle_20:
+        df = df[df["Route Share"] >= 20]
 
     df = df.reindex(df["Edge"].abs().sort_values(ascending=False).index)
     df["Rank"] = range(1, len(df) + 1)
@@ -221,7 +230,6 @@ if results.empty:
 # Team Filter (Dropdown Style)
 # ------------------------
 st.sidebar.header("Team Filter")
-
 team_options = sorted(results["Team"].dropna().unique())
 
 selected_teams = st.sidebar.multiselect(
