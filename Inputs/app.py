@@ -51,6 +51,7 @@ def normalize_name(name):
 wr_df["player_norm"] = wr_df["player"].apply(normalize_name)
 blitz_df["player_norm"] = blitz_df["player"].apply(normalize_name)
 
+# Merge blitz data
 wr_df = wr_df.merge(
     blitz_df[["player_norm", "yprr_blitz"]],
     on="player_norm",
@@ -73,17 +74,17 @@ required_cols = [
     "onehigh_pct", "twohigh_pct", "zerohigh_pct",
     "blitz_pct"
 ]
-
 for col in required_cols:
     if col not in def_df.columns:
         st.error(f"Missing required defense column: {col}")
         st.stop()
     def_df[col] = def_df[col] / 100.0
 
+# Merge matchups
 wr_df = wr_df.merge(matchup_df, on="team", how="left")
 
 # ------------------------
-# Core Model
+# Core Model Function
 # ------------------------
 def compute_model(
     wr_df,
@@ -97,7 +98,6 @@ def compute_model(
     results = []
 
     for _, row in wr_df.iterrows():
-
         base = row["base_yprr"]
         routes = row["routes_played"]
 
@@ -124,19 +124,16 @@ def compute_model(
             defense["man_pct"] * man_ratio +
             defense["zone_pct"] * zone_ratio
         )
-
         safety_component = (
             defense["onehigh_pct"] * onehigh_ratio +
             defense["twohigh_pct"] * twohigh_ratio +
             defense["zerohigh_pct"] * zerohigh_ratio
         )
-
         total_safety = (
             defense["onehigh_pct"] +
             defense["twohigh_pct"] +
             defense["zerohigh_pct"]
         )
-
         if total_safety > 0:
             safety_component /= total_safety
 
@@ -170,16 +167,18 @@ def compute_model(
             "Player": row["player"],
             "Team": row["team"],
             "Opponent": opponent,
-            "Route Share (%)": round(route_share * 100, 1),
+            "Route Share": round(route_share, 1),
             "Base YPRR": round(base, 2),
             "Adjusted YPRR": round(adjusted_yprr, 2),
             "Edge": round(edge_score, 1)
         })
 
     df = pd.DataFrame(results)
+    if df.empty:
+        return df
 
     if qualified_toggle:
-        df = df[df["Route Share (%)"] >= 35]
+        df = df[df["Route Share"] >= 0.35]
 
     df = df.reindex(df["Edge"].abs().sort_values(ascending=False).index)
     df["Rank"] = range(1, len(df) + 1)
@@ -187,7 +186,7 @@ def compute_model(
     return df
 
 # ------------------------
-# Edge Coloring
+# Edge color function
 # ------------------------
 def color_edge(val):
     if val > 20:
@@ -207,15 +206,37 @@ def color_edge(val):
 # Run Model
 # ------------------------
 results = compute_model(wr_df, def_df)
+if results.empty:
+    st.warning("No players available after filtering.")
+    st.stop()
 
+# ------------------------
+# 🔹 TEAM FILTER (NEW)
+# ------------------------
+st.sidebar.header("Team Filter")
+
+filter_teams_toggle = st.sidebar.checkbox("Filter by specific teams")
+
+if filter_teams_toggle:
+    team_options = sorted(results["Team"].dropna().unique())
+    selected_teams = st.sidebar.multiselect(
+        "Select team(s) to display",
+        team_options,
+        default=team_options
+    )
+    results = results[results["Team"].isin(selected_teams)]
+
+# ------------------------
+# Display Tables
+# ------------------------
 display_cols = [
-    "Rank", "Player", "Team", "Opponent",
-    "Route Share (%)", "Base YPRR", "Adjusted YPRR", "Edge"
+    "Rank", "Player", "Team", "Opponent", "Route Share",
+    "Base YPRR", "Adjusted YPRR", "Edge"
 ]
 
 number_format = {
     "Edge": "{:.1f}",
-    "Route Share (%)": "{:.1f}",
+    "Route Share": "{:.1f}",
     "Base YPRR": "{:.2f}",
     "Adjusted YPRR": "{:.2f}"
 }
@@ -223,44 +244,37 @@ number_format = {
 st.subheader("Player Rankings")
 st.dataframe(
     results[display_cols]
-    .style.applymap(color_edge, subset=["Edge"])
+    .style
+    .applymap(color_edge, subset=["Edge"])
     .format(number_format)
 )
 
-# ------------------------
-# Team Filter (Dropdown Style)
-# ------------------------
-st.sidebar.header("Team Filter")
-
-team_options = sorted(results["Team"].dropna().unique())
-
-selected_teams = st.sidebar.multiselect(
-    "Type or select team(s) to display (leave empty for all)",
-    options=team_options
-)
-
-# Apply filter ONLY if teams are selected
-if selected_teams:
-    results = results[results["Team"].isin(selected_teams)]
-
-# ------------------------
 # Targets & Fades
-# ------------------------
 min_edge = 7.5
-min_routes = 40
+min_routes = 0.40
 
 targets = results[
     (results["Edge"] >= min_edge) &
-    (results["Route Share (%)"] >= min_routes)
+    (results["Route Share"] >= min_routes)
 ]
 
 fades = results[
     (results["Edge"] <= -min_edge) &
-    (results["Route Share (%)"] >= min_routes)
+    (results["Route Share"] >= min_routes)
 ].sort_values("Edge")
 
 st.subheader("Targets")
-st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
+st.dataframe(
+    targets[display_cols]
+    .style
+    .applymap(color_edge, subset=["Edge"])
+    .format(number_format)
+)
 
 st.subheader("Fades")
-st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
+st.dataframe(
+    fades[display_cols]
+    .style
+    .applymap(color_edge, subset=["Edge"])
+    .format(number_format)
+)
