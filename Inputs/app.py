@@ -209,22 +209,23 @@ results = compute_model(wr_df, def_df)
 if results.empty:
     st.warning("No players available after filtering.")
     st.stop()
-
+    
 # ------------------------
-# 🔹 TEAM FILTER (NEW)
+# Team Filter (Dropdown Style)
 # ------------------------
 st.sidebar.header("Team Filter")
 
-filter_teams_toggle = st.sidebar.checkbox("Filter by specific teams")
+team_options = sorted(results["Team"].dropna().unique())
 
-if filter_teams_toggle:
-    team_options = sorted(results["Team"].dropna().unique())
-    selected_teams = st.sidebar.multiselect(
-        "Select team(s) to display",
-        team_options,
-        default=team_options
-    )
+selected_teams = st.sidebar.multiselect(
+    "Type or select team(s) to display (leave empty for all)",
+    options=team_options
+)
+
+# Apply filter ONLY if teams are selected
+if selected_teams:
     results = results[results["Team"].isin(selected_teams)]
+
 
 # ------------------------
 # Display Tables
