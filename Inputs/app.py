@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt
 
 # ------------------------
 # Page Setup
@@ -175,7 +176,7 @@ def compute_model(
         systemB_ratio = coverage_component * coverage_weight_dev + safety_component * safety_weight_dev
 
         # ------------------------
-        # Hybrid: final ratio with ±25% influence
+        # Hybrid: final ratio with deviation boost
         final_ratio = systemA_ratio * (1 - deviation_boost) + systemB_ratio * deviation_boost
 
         # ------------------------
@@ -200,6 +201,8 @@ def compute_model(
 
         edge_score *= (1 - penalty)
 
+        # ------------------------
+        # Store both system contributions for visualization
         results.append({
             "Player": row["player"],
             "Team": row["team"],
@@ -207,7 +210,9 @@ def compute_model(
             "Route Share": route_share,  # 0–100%
             "Base YPRR": round(base, 2),
             "Adjusted YPRR": round(adjusted_yprr, 2),
-            "Edge": round(edge_score, 1)
+            "Edge": round(edge_score, 1),
+            "Edge_SystemA": round(edge_score * (1 - deviation_boost), 1),
+            "Edge_DeviationBoost": round(edge_score * deviation_boost, 1)
         })
 
     df = pd.DataFrame(results)
@@ -231,13 +236,13 @@ def compute_model(
 def color_edge(val):
     if val > 20:
         return "color: darkgreen; font-weight: bold"
-    elif 7.5 < val <= 20:
+    elif 10 < val <= 20:
         return "color: green; font-weight: bold"
-    elif 0 < val <= 7.5:
+    elif 0 < val <= 10:
         return "color: lightgreen; font-weight: bold"
-    elif -7.5 < val <= 0:
+    elif -10 < val <= 0:
         return "color: lightcoral; font-weight: bold"
-    elif -20 < val <= -7.5:
+    elif -20 < val <= -10:
         return "color: red; font-weight: bold"
     else:
         return "color: darkred; font-weight: bold"
@@ -269,11 +274,13 @@ if selected_teams:
 # ------------------------
 display_cols = [
     "Rank", "Player", "Team", "Opponent", "Route Share",
-    "Base YPRR", "Adjusted YPRR", "Edge"
+    "Base YPRR", "Adjusted YPRR", "Edge", "Edge_SystemA", "Edge_DeviationBoost"
 ]
 
 number_format = {
     "Edge": "{:.1f}",
+    "Edge_SystemA": "{:.1f}",
+    "Edge_DeviationBoost": "{:.1f}",
     "Route Share": "{:.1f}",
     "Base YPRR": "{:.2f}",
     "Adjusted YPRR": "{:.2f}"
@@ -287,21 +294,19 @@ st.dataframe(
     .format(number_format)
 )
 
-# Targets & Fades
-min_edge = 7.5
-min_routes = 40  # percentage
+# ------------------------
+# Targets & Fades thresholds
+# ------------------------
+min_edge = 10
+min_routes = 30  # percentage
 
+st.subheader("Targets")
+st.markdown(f"*Showing players with Edge ≥ {min_edge} and Route Share ≥ {min_routes}%*")
 targets = results[
     (results["Edge"] >= min_edge) &
     (results["Route Share"] >= min_routes)
 ]
 
-fades = results[
-    (results["Edge"] <= -min_edge) &
-    (results["Route Share"] >= min_routes)
-].sort_values("Edge")
-
-st.subheader("Targets")
 st.dataframe(
     targets[display_cols]
     .style
@@ -310,9 +315,43 @@ st.dataframe(
 )
 
 st.subheader("Fades")
+st.markdown(f"*Showing players with Edge ≤ -{min_edge} and Route Share ≥ {min_routes}%*")
+fades = results[
+    (results["Edge"] <= -min_edge) &
+    (results["Route Share"] >= min_routes)
+].sort_values("Edge")
+
 st.dataframe(
     fades[display_cols]
     .style
     .applymap(color_edge, subset=["Edge"])
     .format(number_format)
 )
+
+# ------------------------
+# Deviation boost bar plot
+# ------------------------
+st.subheader("Deviation Boost Impact")
+st.markdown(
+    "Bar plot shows the contribution of the team-based system vs the deviation boost on each player's Edge."
+)
+
+if not results.empty:
+    plot_df = results.copy()
+    plot_df = plot_df.sort_values("Edge", ascending=False).head(30)  # top 30 players
+
+    plot_df_melt = plot_df.melt(
+        id_vars=["Player"],
+        value_vars=["Edge_SystemA", "Edge_DeviationBoost"],
+        var_name="Component",
+        value_name="Edge_Contribution"
+    )
+
+    chart = alt.Chart(plot_df_melt).mark_bar().encode(
+        x=alt.X('Player', sort=None),
+        y='Edge_Contribution',
+        color=alt.Color('Component', scale=alt.Scale(domain=["Edge_SystemA","Edge_DeviationBoost"], range=["#4caf50","#ff9800"])),
+        tooltip=['Player','Component','Edge_Contribution']
+    ).properties(width=800, height=400)
+
+    st.altair_chart(chart, use_container_width=True)
