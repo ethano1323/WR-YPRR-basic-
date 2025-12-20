@@ -80,11 +80,10 @@ for col in required_cols:
         st.stop()
     def_df[col] = def_df[col] / 100.0
 
-# Merge matchups
 wr_df = wr_df.merge(matchup_df, on="team", how="left")
 
 # ------------------------
-# Core Model Function
+# Core Model
 # ------------------------
 def compute_model(
     wr_df,
@@ -112,7 +111,6 @@ def compute_model(
         defense = def_df.loc[opponent]
         route_share = routes / league_lead_routes
 
-        # Player ratios
         man_ratio = row["yprr_man"] / base
         zone_ratio = row["yprr_zone"] / base
         onehigh_ratio = row["yprr_1high"] / base
@@ -223,12 +221,30 @@ number_format = {
 }
 
 st.subheader("Player Rankings")
-st.markdown(
-    "Players are sorted by the absolute value of Edge, so the largest positive or negative matchups appear at the top."
-)
-
 st.dataframe(
     results[display_cols]
     .style.applymap(color_edge, subset=["Edge"])
     .format(number_format)
 )
+
+# ------------------------
+# Targets & Fades
+# ------------------------
+min_edge = 7.5
+min_routes = 40
+
+targets = results[
+    (results["Edge"] >= min_edge) &
+    (results["Route Share (%)"] >= min_routes)
+]
+
+fades = results[
+    (results["Edge"] <= -min_edge) &
+    (results["Route Share (%)"] >= min_routes)
+].sort_values("Edge")
+
+st.subheader("Targets")
+st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
+
+st.subheader("Fades")
+st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
