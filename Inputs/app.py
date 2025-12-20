@@ -228,6 +228,22 @@ st.dataframe(
 )
 
 # ------------------------
+# Team Filter (Dropdown Style)
+# ------------------------
+st.sidebar.header("Team Filter")
+
+team_options = sorted(results["Team"].dropna().unique())
+
+selected_teams = st.sidebar.multiselect(
+    "Type or select team(s) to display (leave empty for all)",
+    options=team_options
+)
+
+# Apply filter ONLY if teams are selected
+if selected_teams:
+    results = results[results["Team"].isin(selected_teams)]
+
+# ------------------------
 # Targets & Fades
 # ------------------------
 min_edge = 7.5
