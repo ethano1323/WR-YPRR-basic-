@@ -210,9 +210,9 @@ def compute_model(
             "Route Share": route_share,  # 0–100%
             "Base YPRR": round(base, 2),
             "Adjusted YPRR": round(adjusted_yprr, 2),
-            "Edge": round(edge_score, 1),
-            "Edge_SystemA": round(edge_score * (1 - deviation_boost), 1),
-            "Edge_DeviationBoost": round(edge_score * deviation_boost, 1)
+            "Matchup Rating": round(edge_score * (1 - deviation_boost), 1),
+            "Deviation": round(edge_score * deviation_boost, 1),
+            "Edge": round(edge_score, 1)
         })
 
     df = pd.DataFrame(results)
@@ -272,15 +272,16 @@ if selected_teams:
 # ------------------------
 # Display Tables
 # ------------------------
+# Move Edge to far right
 display_cols = [
     "Rank", "Player", "Team", "Opponent", "Route Share",
-    "Base YPRR", "Adjusted YPRR", "Edge", "Edge_SystemA", "Edge_DeviationBoost"
+    "Base YPRR", "Adjusted YPRR", "Matchup Rating", "Deviation", "Edge"
 ]
 
 number_format = {
     "Edge": "{:.1f}",
-    "Edge_SystemA": "{:.1f}",
-    "Edge_DeviationBoost": "{:.1f}",
+    "Matchup Rating": "{:.1f}",
+    "Deviation": "{:.1f}",
     "Route Share": "{:.1f}",
     "Base YPRR": "{:.2f}",
     "Adjusted YPRR": "{:.2f}"
@@ -333,7 +334,7 @@ st.dataframe(
 # ------------------------
 st.subheader("Deviation Boost Impact")
 st.markdown(
-    "Bar plot shows the contribution of the team-based system vs the deviation boost on each player's Edge."
+    "Bar plot shows the contribution of Matchup Rating vs Deviation on each player's Edge."
 )
 
 if not results.empty:
@@ -342,7 +343,7 @@ if not results.empty:
 
     plot_df_melt = plot_df.melt(
         id_vars=["Player"],
-        value_vars=["Edge_SystemA", "Edge_DeviationBoost"],
+        value_vars=["Matchup Rating", "Deviation"],
         var_name="Component",
         value_name="Edge_Contribution"
     )
@@ -350,8 +351,22 @@ if not results.empty:
     chart = alt.Chart(plot_df_melt).mark_bar().encode(
         x=alt.X('Player', sort=None),
         y='Edge_Contribution',
-        color=alt.Color('Component', scale=alt.Scale(domain=["Edge_SystemA","Edge_DeviationBoost"], range=["#4caf50","#ff9800"])),
+        color=alt.Color('Component', scale=alt.Scale(domain=["Matchup Rating","Deviation"], range=["#4caf50","#ff9800"])),
         tooltip=['Player','Component','Edge_Contribution']
     ).properties(width=800, height=400)
 
     st.altair_chart(chart, use_container_width=True)
+
+# ------------------------
+# Column Descriptions
+# ------------------------
+st.subheader("Column Descriptions")
+st.markdown("""
+- **Rank**: Player's rank based on absolute Edge.
+- **Matchup Rating**: Projection based purely on the team's coverage and safety tendencies.
+- **Deviation**: Boost or detract based on how unique the team's defensive tendencies are relative to the league.
+- **Edge**: Final score after combining Matchup Rating, Deviation, and route-share regression.
+- **Route Share**: Percent of team routes run by the player.
+- **Base YPRR / Adjusted YPRR**: Yards per route run, before and after matchup adjustments.
+""")
+
