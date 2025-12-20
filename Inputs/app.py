@@ -19,7 +19,7 @@ DEFAULT_BLITZ_PATH = "data/standard_blitz_data.csv"
 # ------------------------
 # Upload Data (Optional Overrides)
 # ------------------------
-st.sidebar.header("Optional: Upload Your Own Data")
+st.sidebar.header("Control Panel")
 
 wr_file = st.sidebar.file_uploader("WR Data CSV", type="csv")
 def_file = st.sidebar.file_uploader("Defense Tendencies CSV", type="csv")
