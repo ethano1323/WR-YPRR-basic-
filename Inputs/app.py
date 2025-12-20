@@ -31,7 +31,7 @@ qualified_toggle = st.sidebar.checkbox(
 )
 
 # ------------------------
-# Load Data
+# Load Data (Default or Uploaded)
 # ------------------------
 try:
     wr_df = pd.read_csv(wr_file) if wr_file else pd.read_csv(DEFAULT_WR_PATH)
@@ -43,7 +43,7 @@ except Exception as e:
     st.stop()
 
 # ------------------------
-# Normalize Names & Merge Blitz
+# Normalize player names for merging
 # ------------------------
 def normalize_name(name):
     return str(name).lower().replace(".", "").replace(" jr", "").replace(" iii", "").strip()
@@ -75,6 +75,9 @@ required_cols = [
 ]
 
 for col in required_cols:
+    if col not in def_df.columns:
+        st.error(f"Missing required defense column: {col}")
+        st.stop()
     def_df[col] = def_df[col] / 100.0
 
 wr_df = wr_df.merge(matchup_df, on="team", how="left")
@@ -82,8 +85,14 @@ wr_df = wr_df.merge(matchup_df, on="team", how="left")
 # ------------------------
 # Core Model
 # ------------------------
-def compute_model(wr_df, def_df):
-
+def compute_model(
+    wr_df,
+    def_df,
+    max_penalty=0.8,
+    exponent=2,
+    start_penalty=0.50,
+    end_penalty=0.05
+):
     league_lead_routes = wr_df["routes_played"].max()
     results = []
 
@@ -108,7 +117,7 @@ def compute_model(wr_df, def_df):
         twohigh_ratio = row["yprr_2high"] / base
         zerohigh_ratio = row["yprr_0high"] / base
 
-        blitz_ratio = row["yprr_blitz"]
+        blitz_ratio = row.get("yprr_blitz", np.nan)
         blitz_ratio = 1.0 if pd.isna(blitz_ratio) else blitz_ratio / base
 
         coverage_component = (
@@ -122,8 +131,14 @@ def compute_model(wr_df, def_df):
             defense["zerohigh_pct"] * zerohigh_ratio
         )
 
-        total_safety = defense["onehigh_pct"] + defense["twohigh_pct"] + defense["zerohigh_pct"]
-        safety_component /= total_safety if total_safety > 0 else 1
+        total_safety = (
+            defense["onehigh_pct"] +
+            defense["twohigh_pct"] +
+            defense["zerohigh_pct"]
+        )
+
+        if total_safety > 0:
+            safety_component /= total_safety
 
         coverage_safety_ratio = (coverage_component + safety_component) / 2
 
@@ -135,12 +150,21 @@ def compute_model(wr_df, def_df):
         expected_ratio = (coverage_safety_ratio + blitz_component) / 2
         adjusted_yprr = base * expected_ratio
 
-        raw_edge = np.clip((adjusted_yprr - base) / base, -0.25, 0.25)
-        edge = (raw_edge / 0.25) * 100
+        raw_edge = (adjusted_yprr - base) / base
+        raw_edge = np.clip(raw_edge, -0.25, 0.25)
+        edge_score = (raw_edge / 0.25) * 100
 
-        if route_share < 0.50:
-            penalty = ((0.50 - route_share) / 0.45) ** 2 * 0.8
-            edge *= (1 - penalty)
+        if route_share >= start_penalty:
+            penalty = 0
+        elif route_share <= end_penalty:
+            penalty = max_penalty
+        else:
+            penalty = max_penalty * (
+                (start_penalty - route_share) /
+                (start_penalty - end_penalty)
+            ) ** exponent
+
+        edge_score *= (1 - penalty)
 
         results.append({
             "Player": row["player"],
@@ -149,7 +173,7 @@ def compute_model(wr_df, def_df):
             "Route Share (%)": round(route_share * 100, 1),
             "Base YPRR": round(base, 2),
             "Adjusted YPRR": round(adjusted_yprr, 2),
-            "Edge": round(edge, 1)
+            "Edge": round(edge_score, 1)
         })
 
     df = pd.DataFrame(results)
@@ -163,43 +187,64 @@ def compute_model(wr_df, def_df):
     return df
 
 # ------------------------
+# Edge Coloring
+# ------------------------
+def color_edge(val):
+    if val > 20:
+        return "color: darkgreen; font-weight: bold"
+    elif 7.5 < val <= 20:
+        return "color: green; font-weight: bold"
+    elif 0 < val <= 7.5:
+        return "color: lightgreen; font-weight: bold"
+    elif -7.5 < val <= 0:
+        return "color: lightcoral; font-weight: bold"
+    elif -20 < val <= -7.5:
+        return "color: red; font-weight: bold"
+    else:
+        return "color: darkred; font-weight: bold"
+
+# ------------------------
 # Run Model
 # ------------------------
 results = compute_model(wr_df, def_df)
 
-# ------------------------
-# TEAM FILTER (NEW)
-# ------------------------
-st.sidebar.header("Team Filter")
-
-team_options = sorted(results["Team"].unique())
-selected_teams = st.sidebar.multiselect(
-    "Type or select teams to display (leave empty for all)",
-    team_options
-)
-
-if selected_teams:
-    results = results[results["Team"].isin(selected_teams)]
-
-# ------------------------
-# Display
-# ------------------------
 display_cols = [
     "Rank", "Player", "Team", "Opponent",
     "Route Share (%)", "Base YPRR", "Adjusted YPRR", "Edge"
 ]
 
+number_format = {
+    "Edge": "{:.1f}",
+    "Route Share (%)": "{:.1f}",
+    "Base YPRR": "{:.2f}",
+    "Adjusted YPRR": "{:.2f}"
+}
+
 st.subheader("Player Rankings")
-st.dataframe(results[display_cols])
+st.dataframe(
+    results[display_cols]
+    .style.applymap(color_edge, subset=["Edge"])
+    .format(number_format)
+)
 
 # ------------------------
 # Targets & Fades
 # ------------------------
-targets = results[(results["Edge"] >= 7.5) & (results["Route Share (%)"] >= 40)]
-fades = results[(results["Edge"] <= -7.5) & (results["Route Share (%)"] >= 40)].sort_values("Edge")
+min_edge = 7.5
+min_routes = 40
+
+targets = results[
+    (results["Edge"] >= min_edge) &
+    (results["Route Share (%)"] >= min_routes)
+]
+
+fades = results[
+    (results["Edge"] <= -min_edge) &
+    (results["Route Share (%)"] >= min_routes)
+].sort_values("Edge")
 
 st.subheader("Targets")
-st.dataframe(targets[display_cols])
+st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
 
 st.subheader("Fades")
-st.dataframe(fades[display_cols])
+st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
