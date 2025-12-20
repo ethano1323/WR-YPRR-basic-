@@ -155,10 +155,10 @@ def compute_model(
         edge_score = (raw_edge / 0.25) * 100
 
         # ------------------------
-        # Route-share penalty using route_share column
+        # Route-share penalty using route_share column from CSV
         route_share = row.get("route_share", np.nan)
         if pd.isna(route_share):
-            route_share = routes / wr_df["routes_played"].sum()  # fallback
+            route_share = 0  # treat missing as 0
 
         if route_share >= start_penalty:
             penalty = 0
@@ -175,7 +175,7 @@ def compute_model(
             "Player": row["player"],
             "Team": row["team"],
             "Opponent": opponent,
-            "Route Share": route_share,
+            "Route Share": route_share,  # keep as 0-1
             "Base YPRR": round(base, 2),
             "Adjusted YPRR": round(adjusted_yprr, 2),
             "Edge": round(edge_score, 1)
@@ -265,7 +265,7 @@ min_routes = 0.40
 
 targets = results[
     (results["Edge"] >= min_edge) &
-    (results["Route Share"] / 100 >= min_routes)  # divide by 100 for decimal comparison
+    (results["Route Share"] / 100 >= min_routes)
 ]
 
 fades = results[
@@ -288,3 +288,4 @@ st.dataframe(
     .applymap(color_edge, subset=["Edge"])
     .format(number_format)
 )
+
