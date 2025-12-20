@@ -91,8 +91,8 @@ def compute_model(
     def_df,
     max_penalty=0.8,
     exponent=2,
-    start_penalty=50,  # now matching percentage scale
-    end_penalty=5      # now matching percentage scale
+    start_penalty=40,  # adjusted threshold (%)
+    end_penalty=10     # adjusted threshold (%)
 ):
     results = []
 
@@ -258,7 +258,7 @@ st.dataframe(
 
 # Targets & Fades
 min_edge = 7.5
-min_routes = 40  # match percentage scale
+min_routes = 40  # percentage scale
 
 targets = results[
     (results["Edge"] >= min_edge) &
@@ -285,3 +285,4 @@ st.dataframe(
     .applymap(color_edge, subset=["Edge"])
     .format(number_format)
 )
+
