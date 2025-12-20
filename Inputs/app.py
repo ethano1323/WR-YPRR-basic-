@@ -69,7 +69,6 @@ else:
     st.error("Defense CSV must include a team column.")
     st.stop()
 
-# Required columns check
 required_cols = [
     "man_pct", "zone_pct",
     "onehigh_pct", "twohigh_pct", "zerohigh_pct",
@@ -112,21 +111,15 @@ def compute_model(
         defense = def_df.loc[opponent]
         route_share = routes / league_lead_routes
 
-        # Player ratios
         man_ratio = row["yprr_man"] / base
         zone_ratio = row["yprr_zone"] / base
         onehigh_ratio = row["yprr_1high"] / base
         twohigh_ratio = row["yprr_2high"] / base
         zerohigh_ratio = row["yprr_0high"] / base
 
-        # Blitz ratio
         blitz_ratio = row.get("yprr_blitz", np.nan)
-        if pd.isna(blitz_ratio):
-            blitz_ratio = 1.0
-        else:
-            blitz_ratio = blitz_ratio / base
+        blitz_ratio = 1.0 if pd.isna(blitz_ratio) else blitz_ratio / base
 
-        # Coverage weighting
         coverage_component = (
             defense["man_pct"] * man_ratio +
             defense["zone_pct"] * zone_ratio
@@ -146,22 +139,18 @@ def compute_model(
 
         coverage_safety_ratio = (coverage_component + safety_component) / 2
 
-        # Blitz weighting
         blitz_component = (
             defense["blitz_pct"] * blitz_ratio +
             (1 - defense["blitz_pct"]) * 1.0
         )
 
-        # Final adjusted YPRR
         expected_ratio = (coverage_safety_ratio + blitz_component) / 2
         adjusted_yprr = base * expected_ratio
 
-        # Edge calculation
         raw_edge = (adjusted_yprr - base) / base
         raw_edge = np.clip(raw_edge, -0.25, 0.25)
         edge_score = (raw_edge / 0.25) * 100
 
-        # Route-share penalty (edge only)
         if route_share >= start_penalty:
             penalty = 0
         elif route_share <= end_penalty:
@@ -191,7 +180,6 @@ def compute_model(
     if qualified_toggle:
         df = df[df["Route Share"] >= 0.35]
 
-    # Sort by absolute edge for ranking
     df = df.reindex(df["Edge"].abs().sort_values(ascending=False).index)
     df["Rank"] = range(1, len(df) + 1)
 
@@ -222,8 +210,28 @@ if results.empty:
     st.warning("No players available after filtering.")
     st.stop()
 
+# ------------------------
+# 🔹 TEAM FILTER (NEW)
+# ------------------------
+st.sidebar.header("Team Filter")
+
+filter_teams_toggle = st.sidebar.checkbox("Filter by specific teams")
+
+if filter_teams_toggle:
+    team_options = sorted(results["Team"].dropna().unique())
+    selected_teams = st.sidebar.multiselect(
+        "Select team(s) to display",
+        team_options,
+        default=team_options
+    )
+    results = results[results["Team"].isin(selected_teams)]
+
+# ------------------------
+# Display Tables
+# ------------------------
 display_cols = [
-    "Rank", "Player", "Team", "Opponent", "Route Share", "Base YPRR", "Adjusted YPRR", "Edge"
+    "Rank", "Player", "Team", "Opponent", "Route Share",
+    "Base YPRR", "Adjusted YPRR", "Edge"
 ]
 
 number_format = {
@@ -233,13 +241,13 @@ number_format = {
     "Adjusted YPRR": "{:.2f}"
 }
 
-# Rankings table
-st.subheader("Receiver Rankings")
 st.subheader("Player Rankings")
-st.markdown(
-    "Players are sorted by the absolute value of Edge, so the largest positive or negative matchups appear at the top."
+st.dataframe(
+    results[display_cols]
+    .style
+    .applymap(color_edge, subset=["Edge"])
+    .format(number_format)
 )
-st.dataframe(results[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
 
 # Targets & Fades
 min_edge = 7.5
@@ -249,45 +257,24 @@ targets = results[
     (results["Edge"] >= min_edge) &
     (results["Route Share"] >= min_routes)
 ]
+
 fades = results[
     (results["Edge"] <= -min_edge) &
     (results["Route Share"] >= min_routes)
-].sort_values("Edge")  # ascending for worst fade first
+].sort_values("Edge")
 
 st.subheader("Targets")
-st.info(
-    f"Targets must have:\n"
-    f"• Edge ≥ +{min_edge}\n"
-    f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
+st.dataframe(
+    targets[display_cols]
+    .style
+    .applymap(color_edge, subset=["Edge"])
+    .format(number_format)
 )
-if not targets.empty:
-    st.dataframe(targets[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
-else:
-    st.write("No players meet the target criteria this week.")
 
 st.subheader("Fades")
-st.info(
-    f"Fades must have:\n"
-    f"• Edge ≤ -{min_edge}\n"
-    f"• ≥ {int(min_routes*100)}% of league-lead routes\n"
-)
-if not fades.empty:
-    st.dataframe(fades[display_cols].style.applymap(color_edge, subset=["Edge"]).format(number_format))
-else:
-    st.write("No players meet the fade criteria this week.")
-
-# Stat definitions
-st.subheader("Stat Definitions")
-st.markdown(
-    """    
-    **Opponent:** Matchup for the week  
-    
-    **Route Share:** Percentage of the team's total dropbacks in which this player ran a route
-    
-    **Base YPRR:** Player's base yards per route run this season 
-    
-    **Adjusted YPRR:** Projected YPRR based on opponent's typical coverage, safety looks, and blitz rates
-    
-    **Edge:** Percentage difference between Adjusted YPRR and Base YPRR, including a sample size penalty (accounts for limited route-share and other factors)  
-    """
+st.dataframe(
+    fades[display_cols]
+    .style
+    .applymap(color_edge, subset=["Edge"])
+    .format(number_format)
 )
