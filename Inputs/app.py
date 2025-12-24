@@ -30,6 +30,9 @@ blitz_file = st.sidebar.file_uploader("WR Blitz YPRR CSV", type="csv")
 # ------------------------
 # Route-share filter toggles
 # ------------------------
+qualified_toggle_50 = st.sidebar.checkbox(
+    "Show only players ≥50% route share"
+)  
 qualified_toggle_35 = st.sidebar.checkbox(
     "Show only players ≥35% route share"
 )
