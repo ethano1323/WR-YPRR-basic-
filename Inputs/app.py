@@ -30,6 +30,9 @@ blitz_file = st.sidebar.file_uploader("WR Blitz YPRR CSV", type="csv")
 # ------------------------
 # Route-share filter toggles
 # ------------------------
+qualified_toggle_65 = st.sidebar.checkbox(
+    "Show only players ≥65% route share"
+)  
 qualified_toggle_50 = st.sidebar.checkbox(
     "Show only players ≥50% route share"
 )  
@@ -222,7 +225,9 @@ def compute_model(
         return df
 
     # Apply route-share filters
-    if qualified_toggle_50:
+    if qualified_toggle_65:
+        df = df[df["Route (%)"] >= 65]
+    elif qualified_toggle_50:
         df = df[df["Route (%)"] >= 50]
     elif qualified_toggle_35:
         df = df[df["Route (%)"] >= 35]
