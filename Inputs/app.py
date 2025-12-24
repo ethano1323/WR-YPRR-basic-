@@ -297,7 +297,7 @@ st.dataframe(
 # ------------------------
 # Targets & Fades thresholds
 # ------------------------
-min_edge = 10
+min_edge = 15
 min_routes = 30  # percentage
 
 st.subheader("Targets")
