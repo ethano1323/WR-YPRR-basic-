@@ -61,7 +61,7 @@ wr_df = wr_df.merge(
 )
 
 # ------------------------
-# Defense Data
+# Prepare Defense Data
 # ------------------------
 for col in ["team", "defense", "def_team", "abbr"]:
     if col in def_df_raw.columns:
@@ -71,26 +71,40 @@ else:
     st.error("Defense CSV must include a team column.")
     st.stop()
 
-for col in [
+required_cols = [
     "man_pct", "zone_pct",
     "onehigh_pct", "twohigh_pct", "zerohigh_pct",
     "blitz_pct"
-]:
+]
+
+for col in required_cols:
+    if col not in def_df.columns:
+        st.error(f"Missing required defense column: {col}")
+        st.stop()
     def_df[col] /= 100.0
 
-# ------------------------
-# Merge matchups
-# ------------------------
 wr_df = wr_df.merge(matchup_df, on="team", how="left")
 
 # ------------------------
-# League averages (unchanged)
+# League Averages
 # ------------------------
 league_avg_man = def_df["man_pct"].mean()
 league_avg_zone = def_df["zone_pct"].mean()
 league_avg_1high = def_df["onehigh_pct"].mean()
 league_avg_2high = def_df["twohigh_pct"].mean()
 league_avg_0high = def_df["zerohigh_pct"].mean()
+
+# ------------------------
+# NEW: Regression + Clamping Constants
+# ------------------------
+REGRESSION_K = 20
+MIN_RATIO = 0.6
+MAX_RATIO = 1.6
+
+def regress_to_player_base(split_yprr, base_yprr, routes, k=REGRESSION_K):
+    if pd.isna(split_yprr) or split_yprr <= 0:
+        return base_yprr
+    return (split_yprr * routes + base_yprr * k) / (routes + k)
 
 # ------------------------
 # Core Model
@@ -104,10 +118,6 @@ def compute_model(
     end_penalty=5,
     deviation_boost=0.25
 ):
-    REG_K = 20
-    MIN_RATIO = 0.6
-    MAX_RATIO = 1.6
-
     results = []
 
     for _, row in wr_df.iterrows():
@@ -124,44 +134,48 @@ def compute_model(
         defense = def_df.loc[opponent]
 
         # ------------------------
-        # Player-relative regression helper
-        def regressed_ratio(split_yprr):
-            if pd.isna(split_yprr):
-                split_yprr = base
-            effective = (
-                split_yprr * routes +
-                base * REG_K
-            ) / (routes + REG_K)
-            ratio = effective / base
-            return np.clip(ratio, MIN_RATIO, MAX_RATIO)
+        # Player-relative regression (NEW)
+        man_yprr = regress_to_player_base(row["yprr_man"], base, routes)
+        zone_yprr = regress_to_player_base(row["yprr_zone"], base, routes)
+        onehigh_yprr = regress_to_player_base(row["yprr_1high"], base, routes)
+        twohigh_yprr = regress_to_player_base(row["yprr_2high"], base, routes)
+        zerohigh_yprr = regress_to_player_base(row["yprr_0high"], base, routes)
+        blitz_yprr = regress_to_player_base(row.get("yprr_blitz", np.nan), base, routes)
+
+        # Convert to ratios
+        man_ratio = man_yprr / base
+        zone_ratio = zone_yprr / base
+        onehigh_ratio = onehigh_yprr / base
+        twohigh_ratio = twohigh_yprr / base
+        zerohigh_ratio = zerohigh_yprr / base
+        blitz_ratio = blitz_yprr / base
 
         # ------------------------
-        # Ratios (REGRESSED + CLAMPED)
-        man_ratio = regressed_ratio(row["yprr_man"])
-        zone_ratio = regressed_ratio(row["yprr_zone"])
-        onehigh_ratio = regressed_ratio(row["yprr_1high"])
-        twohigh_ratio = regressed_ratio(row["yprr_2high"])
-        zerohigh_ratio = regressed_ratio(row["yprr_0high"])
-        blitz_ratio = regressed_ratio(row.get("yprr_blitz", base))
+        # Ratio clamping (NEW)
+        man_ratio = np.clip(man_ratio, MIN_RATIO, MAX_RATIO)
+        zone_ratio = np.clip(zone_ratio, MIN_RATIO, MAX_RATIO)
+        onehigh_ratio = np.clip(onehigh_ratio, MIN_RATIO, MAX_RATIO)
+        twohigh_ratio = np.clip(twohigh_ratio, MIN_RATIO, MAX_RATIO)
+        zerohigh_ratio = np.clip(zerohigh_ratio, MIN_RATIO, MAX_RATIO)
+        blitz_ratio = np.clip(blitz_ratio, MIN_RATIO, MAX_RATIO)
+
+        man_pct = defense["man_pct"]
+        zone_pct = defense["zone_pct"]
+        onehigh_pct = defense["onehigh_pct"]
+        twohigh_pct = defense["twohigh_pct"]
+        zerohigh_pct = defense["zerohigh_pct"]
 
         # ------------------------
         # System A
-        coverage_component = (
-            defense["man_pct"] * man_ratio +
-            defense["zone_pct"] * zone_ratio
-        )
-        total_coverage = defense["man_pct"] + defense["zone_pct"]
+        coverage_component = man_pct * man_ratio + zone_pct * zone_ratio
+        total_coverage = man_pct + zone_pct
 
         safety_component = (
-            defense["onehigh_pct"] * onehigh_ratio +
-            defense["twohigh_pct"] * twohigh_ratio +
-            defense["zerohigh_pct"] * zerohigh_ratio
+            onehigh_pct * onehigh_ratio +
+            twohigh_pct * twohigh_ratio +
+            zerohigh_pct * zerohigh_ratio
         )
-        total_safety = (
-            defense["onehigh_pct"] +
-            defense["twohigh_pct"] +
-            defense["zerohigh_pct"]
-        )
+        total_safety = onehigh_pct + twohigh_pct + zerohigh_pct
 
         if total_safety > 0:
             safety_component /= total_safety
@@ -175,9 +189,13 @@ def compute_model(
             systemA_ratio = (coverage_component + safety_component) / 2
 
         # ------------------------
-        # System B (UNCHANGED)
-        coverage_dev = abs(defense["man_pct"] - league_avg_man) + abs(defense["zone_pct"] - league_avg_zone)
-        safety_dev = abs(defense["onehigh_pct"] - league_avg_1high) + abs(defense["twohigh_pct"] - league_avg_2high) + abs(defense["zerohigh_pct"] - league_avg_0high)
+        # System B (Deviation)
+        coverage_dev = abs(man_pct - league_avg_man) + abs(zone_pct - league_avg_zone)
+        safety_dev = (
+            abs(onehigh_pct - league_avg_1high) +
+            abs(twohigh_pct - league_avg_2high) +
+            abs(zerohigh_pct - league_avg_0high)
+        )
 
         if coverage_dev + safety_dev > 0:
             coverage_weight_dev = coverage_dev / (coverage_dev + safety_dev)
@@ -192,18 +210,20 @@ def compute_model(
         )
 
         # ------------------------
-        # Hybrid
+        # Hybrid ratio
         final_ratio = (
             systemA_ratio * (1 - deviation_boost) +
             systemB_ratio * deviation_boost
         )
 
+        # ------------------------
+        # Adjusted YPRR & edge (NO EDGE CAP)
         adjusted_yprr = base * ((final_ratio + blitz_ratio) / 2)
         raw_edge = (adjusted_yprr - base) / base
-        edge_score = raw_edge * 100  # NO CAP
+        edge_score = (raw_edge / 0.25) * 100
 
         # ------------------------
-        # Route-share penalty (UNCHANGED)
+        # Route-share regression
         route_share = row.get("route_share", 0)
 
         if route_share >= start_penalty:
@@ -211,7 +231,10 @@ def compute_model(
         elif route_share <= end_penalty:
             penalty = max_penalty
         else:
-            penalty = max_penalty * ((start_penalty - route_share) / (start_penalty - end_penalty)) ** exponent
+            penalty = max_penalty * (
+                (start_penalty - route_share) /
+                (start_penalty - end_penalty)
+            ) ** exponent
 
         edge_score *= (1 - penalty)
 
@@ -228,6 +251,8 @@ def compute_model(
         })
 
     df = pd.DataFrame(results)
+    if df.empty:
+        return df
 
     if qualified_toggle_35:
         df = df[df["Route (%)"] >= 35]
@@ -236,6 +261,5 @@ def compute_model(
 
     df = df.reindex(df["Edge"].abs().sort_values(ascending=False).index)
     df["Rk"] = range(1, len(df) + 1)
-
     return df
 
