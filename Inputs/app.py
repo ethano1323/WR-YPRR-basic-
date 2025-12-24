@@ -183,7 +183,7 @@ def compute_model(
         # Compute adjusted YPRR & edge
         adjusted_yprr = base * ((final_ratio + blitz_ratio) / 2)
         raw_edge = (adjusted_yprr - base) / base
-        edge_score = (raw_edge / 0.25) * 100
+        edge_score = (raw_edge / 0.25) * 10
 
         # ------------------------
         # Route-share regression toward zero
